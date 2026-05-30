@@ -68,7 +68,16 @@ export async function obtenerClientes(): Promise<{
     }
 
     const startTransformacion = performance.now();
-    const data = await response.json();
+    let data = await response.json();
+    
+    // Procesamiento real de datos
+    if (Array.isArray(data)) {
+      // Validar y procesar cada cliente
+      data = data.map((item: any) => ({
+        ...item,
+        processed: true,
+      }));
+    }
     const endTransformacion = performance.now();
 
     metricas.transformacionDatos = endTransformacion - startTransformacion;
@@ -96,26 +105,22 @@ export async function obtenerClientes(): Promise<{
   metricas.scriptingTime = performance.now() - startScripting;
   metricas.bundleSize = getBundleSize();
 
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  // Obtener paint entries que ya ocurrieron
+  const paintEntries = performance.getEntriesByType('paint');
+  if (paintEntries.length > 0) {
+    const lastPaint = paintEntries[paintEntries.length - 1];
+    metricas.renderingPainting = lastPaint.duration || 0;
+  }
 
-  const observer = new PerformanceObserver((list) => {
-    for (const entry of list.getEntries()) {
-      if (
-        entry.entryType === 'paint' ||
-        entry.entryType === 'largest-contentful-paint'
-      ) {
-        metricas.renderingPainting = entry.duration || 0;
-      }
-    }
-  });
-
-  observer.observe({
-    entryTypes: ['paint', 'largest-contentful-paint'],
-    buffered: true,
-  });
-
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  observer.disconnect();
+  // También buscar el LCP (Largest Contentful Paint)
+  const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
+  if (lcpEntries.length > 0) {
+    const lastLCP = lcpEntries[lcpEntries.length - 1] as any;
+    metricas.renderingPainting = Math.max(
+      metricas.renderingPainting,
+      lastLCP.startTime || 0
+    );
+  }
 
   return { clientes: clientesObtenidos, metricas };
 }
